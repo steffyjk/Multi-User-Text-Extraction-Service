@@ -70,27 +70,36 @@ class ExtractAndStoreTextView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+
+        # take three types of data from request
+        # 1. file 2.url 3. email
         file = request.FILES.get('file')
         url = request.data.get('url')
         email = request.data.get('email')
 
+
+        # either file/url mandatory
         if not file and not url:
             return Response({"error": "Please provide a file or URL"}, status=400)
-
+        # email is important
         if not email:
             return Response({"error": "Email is required"}, status=400)
 
         try:
             # Handle file from URL
             if url:
+
+                # get the data from url
                 response = requests.get(url)
                 if response.status_code != 200:
                     return Response({"error": "Failed to download file from URL"}, status=400)
-
+                
+                # temp. storing that file in temp folder 
                 file_path = f'temp/{os.path.basename(url)}'
                 os.makedirs('temp', exist_ok=True)
                 with open(file_path, 'wb') as f:
                     f.write(response.content)
+            # if not url then handle the uploded file [pdf/docx]
             else:
                 # Handle uploaded file
                 file_path = f'temp/{file.name}'
@@ -99,17 +108,25 @@ class ExtractAndStoreTextView(APIView):
                     for chunk in file.chunks():
                         f.write(chunk)
 
-            # Extract text
+            # Extract textfrom the file which we have stored in temp file path=[file_path]
+
+            # check the file type by extention .pdf / .docx
             if file_path.endswith('.pdf'):
+
+                # if pdf then extract text by PdfReader
                 reader = PdfReader(file_path)
                 extracted_text = ''.join(page.extract_text() for page in reader.pages)
             elif file_path.endswith('.docx'):
+
+                # if docx then extract text by DocxDocument
                 doc = DocxDocument(file_path)
                 extracted_text = '\n'.join([p.text for p in doc.paragraphs])
             else:
+
+                # if not .pdf or not .docx then throw error
                 return Response({"error": "Unsupported file format"}, status=400)
 
-            # Store in the database
+            # Store in the database DocumentDetails table
             document = DocumentDetails.objects.create(
                 file=file if file else None,
                 url=url if url else None,
@@ -118,22 +135,22 @@ class ExtractAndStoreTextView(APIView):
                 status="COMPLETED",
             )
 
-            # Cleanup
+            # Cleanup / after extraction remove the file which we have stored temporiry for the extraction purpose
             os.remove(file_path)
 
-            # Send notification
+            # Send notification on provided email
             send_notification(document.email, {
                     "message": "Document processed and stored successfully.",
                     "document_id": document.id,
-                    "extracted_text": extracted_text,  # Optional, can be omitted if too large
+                    "extracted_text": extracted_text, 
                 })
 
-            # Return success response
+            # Return success response for the response of the API
             return Response(
                 {
                     "message": "Document processed and stored successfully.",
                     "document_id": document.id,
-                    "extracted_text": extracted_text,  # Optional, can be omitted if too large
+                    "extracted_text": extracted_text,  
                 },
                 status=201,
             )
