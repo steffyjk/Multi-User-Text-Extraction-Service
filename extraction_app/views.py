@@ -7,6 +7,7 @@ from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
 import os
 import requests
+from .utils import send_notification
 
 class DocumentUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
@@ -119,6 +120,9 @@ class ExtractAndStoreTextView(APIView):
 
             # Cleanup
             os.remove(file_path)
+
+            # Send notification
+            send_notification(document.email)
 
             # Return success response
             return Response(
