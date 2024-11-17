@@ -35,6 +35,9 @@ create .env in root level add this Note: this is testing secret Key provided in 
 `EMAIL_HOST_PASSWORD=`
 
 
+# run python celery worker for the core project:
+
+`celery -A core worker --loglevel=info --pool=solo`
 
 # run python django app:
 
