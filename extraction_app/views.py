@@ -122,7 +122,11 @@ class ExtractAndStoreTextView(APIView):
             os.remove(file_path)
 
             # Send notification
-            send_notification(document.email)
+            send_notification(document.email, {
+                    "message": "Document processed and stored successfully.",
+                    "document_id": document.id,
+                    "extracted_text": extracted_text,  # Optional, can be omitted if too large
+                })
 
             # Return success response
             return Response(
