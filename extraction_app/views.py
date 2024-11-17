@@ -1,13 +1,12 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import DocumentDetails
 from .serializers import DocumentSerializer
 from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
 import os
 import requests
-from .utils import send_notification
+from .tasks import process_document
 
 class DocumentUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
@@ -108,52 +107,13 @@ class ExtractAndStoreTextView(APIView):
                     for chunk in file.chunks():
                         f.write(chunk)
 
-            # Extract textfrom the file which we have stored in temp file path=[file_path]
-
-            # check the file type by extention .pdf / .docx
-            if file_path.endswith('.pdf'):
-
-                # if pdf then extract text by PdfReader
-                reader = PdfReader(file_path)
-                extracted_text = ''.join(page.extract_text() for page in reader.pages)
-            elif file_path.endswith('.docx'):
-
-                # if docx then extract text by DocxDocument
-                doc = DocxDocument(file_path)
-                extracted_text = '\n'.join([p.text for p in doc.paragraphs])
-            else:
-
-                # if not .pdf or not .docx then throw error
-                return Response({"error": "Unsupported file format"}, status=400)
-
-            # Store in the database DocumentDetails table
-            document = DocumentDetails.objects.create(
-                file=file if file else None,
-                url=url if url else None,
-                extracted_text=extracted_text,
-                email=email,
-                status="COMPLETED",
-            )
-
-            # Cleanup / after extraction remove the file which we have stored temporiry for the extraction purpose
-            os.remove(file_path)
-
-            # Send notification on provided email
-            send_notification(document.email, {
-                    "message": "Document processed and stored successfully.",
-                    "document_id": document.id,
-                    "extracted_text": extracted_text, 
-                })
-
-            # Return success response for the response of the API
+            # Trigger asynchronous taskwith celery
+            process_document.delay(file_path, url, email)
             return Response(
-                {
-                    "message": "Document processed and stored successfully.",
-                    "document_id": document.id,
-                    "extracted_text": extracted_text,  
-                },
-                status=201,
+                {"message": "Document processing started. You will receive an email when completed."},
+                status=202,
             )
 
+           
         except Exception as e:
             return Response({"error": f"Failed to process the document: {str(e)}"}, status=500)
